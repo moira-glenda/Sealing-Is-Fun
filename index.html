@@ -927,43 +927,125 @@
     }
 
     function renderOrder(item) {
-      let arranged = [];
+      const orderState = {
+        orderedSelections: [],
+        orderCompleted: false,
+        orderCorrect: false,
+        canGoNext: false,
+        availableChunks: shuffleOrderChunks()
+      };
+
       gameArea.innerHTML = `
         <section class="card">
           <span class="verse-ref">${item.ref} (${TRANSLATION})</span>
           <div class="question">Tap the chunks in order.</div>
-          <div class="chunk-bank">${item.shuffled.map(c => `<button class="chip" data-chunk="${c.replace(/"/g, '&quot;')}">${c}</button>`).join("")}</div>
+          <div id="chunkBank" class="chunk-bank"></div>
           <div id="arranged" class="arranged"></div>
-          <div id="feedback" class="feedback"></div>
+          <div id="feedback" class="feedback error">Finish ordering the verse first.</div>
           <div class="controls">
-            <button id="checkBtn" class="btn btn-main">Check Order</button>
+            <button id="checkBtn" class="btn btn-main" disabled>Check Order</button>
             <button id="nextBtn" class="btn btn-ghost" disabled>Next</button>
           </div>
         </section>`;
 
+      const chunkBank = document.getElementById("chunkBank");
       const arrangedEl = document.getElementById("arranged");
-      gameArea.querySelectorAll("[data-chunk]").forEach(chip => {
-        chip.addEventListener("click", () => {
-          if (chip.classList.contains("used")) return;
-          chip.classList.add("used");
-          arranged.push(chip.dataset.chunk);
+      const feedback = document.getElementById("feedback");
+      const checkBtn = document.getElementById("checkBtn");
+      const nextBtn = document.getElementById("nextBtn");
+
+      function shuffleOrderChunks() {
+        return shuffle(item.chunks);
+      }
+
+      function isOrderComplete() {
+        return orderState.orderedSelections.length === item.chunks.length;
+      }
+
+      function updateButtonStates() {
+        orderState.orderCompleted = isOrderComplete();
+        checkBtn.disabled = !orderState.orderCompleted || orderState.orderCorrect;
+        nextBtn.disabled = !orderState.canGoNext;
+
+        if (!orderState.orderCompleted && !orderState.orderCorrect) {
+          feedback.textContent = "Finish ordering the verse first.";
+          feedback.className = "feedback error";
+        }
+      }
+
+      function renderOrderMode() {
+        arrangedEl.innerHTML = "";
+        chunkBank.innerHTML = "";
+
+        orderState.availableChunks.forEach((chunk, chunkIndex) => {
+          const chip = document.createElement("button");
+          chip.className = "chip";
+          chip.type = "button";
+          chip.textContent = chunk;
+          chip.disabled = orderState.orderCorrect;
+          chip.addEventListener("click", () => placeOrderChunk(chunkIndex, orderState.orderedSelections.length));
+          chunkBank.appendChild(chip);
+        });
+
+        orderState.orderedSelections.forEach(chunk => {
           const tag = document.createElement("span");
           tag.className = "chip";
-          tag.textContent = chip.dataset.chunk;
+          tag.textContent = chunk;
           arrangedEl.appendChild(tag);
         });
+
+        updateButtonStates();
+      }
+
+      function placeOrderChunk(chunkIndex, targetIndex) {
+        if (orderState.orderCorrect || orderState.orderCompleted) return;
+        const [selectedChunk] = orderState.availableChunks.splice(chunkIndex, 1);
+        if (!selectedChunk) return;
+        orderState.orderedSelections.splice(targetIndex, 0, selectedChunk);
+        renderOrderMode();
+      }
+
+      function resetOrderAttempt() {
+        orderState.orderedSelections = [];
+        orderState.orderCompleted = false;
+        orderState.orderCorrect = false;
+        orderState.canGoNext = false;
+        orderState.availableChunks = shuffleOrderChunks();
+        feedback.textContent = "Not quite right. Try again.";
+        feedback.className = "feedback error";
+        renderOrderMode();
+      }
+
+      function checkOrderAnswer() {
+        if (!isOrderComplete() || orderState.orderCorrect) {
+          feedback.textContent = "Finish ordering the verse first.";
+          feedback.className = "feedback error";
+          updateButtonStates();
+          return;
+        }
+
+        const good = JSON.stringify(orderState.orderedSelections) === JSON.stringify(item.chunks);
+        if (!good) {
+          handleScore(false, 0);
+          resetOrderAttempt();
+          return;
+        }
+
+        orderState.orderCorrect = true;
+        orderState.canGoNext = true;
+        feedback.textContent = "Correct! You can move to the next question.";
+        feedback.className = "feedback success";
+        handleScore(true, 20);
+        renderOrderMode();
+      }
+
+      checkBtn.addEventListener("click", checkOrderAnswer);
+      nextBtn.addEventListener("click", () => {
+        if (!orderState.canGoNext) return;
+        next();
       });
 
-      document.getElementById("checkBtn").addEventListener("click", () => {
-        const good = JSON.stringify(arranged) === JSON.stringify(item.chunks);
-        const feedback = document.getElementById("feedback");
-        feedback.textContent = good ? `${encouragement(true)} Order is correct.` : encouragement(false);
-        feedback.className = `feedback ${good ? "success" : "error"}`;
-        handleScore(good, 20);
-        document.getElementById("nextBtn").disabled = !good;
-      });
-
-      document.getElementById("nextBtn").addEventListener("click", next);
+      renderOrderMode();
     }
 
     function renderFlash(item) {
