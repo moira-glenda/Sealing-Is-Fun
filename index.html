@@ -173,6 +173,13 @@
 
     .btn:active { transform: scale(0.98); }
 
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      box-shadow: none;
+      transform: none;
+    }
+
     .btn-choice {
       background: #fff1f8;
       color: #7c3c5d;
@@ -795,6 +802,18 @@
     }
 
     function renderBuilder(item) {
+      if (!item.builderState || item.builderState.verseIndex !== state.index) {
+        item.builderState = {
+          verseIndex: state.index,
+          builderAnswers: Array(item.blankPositions.length).fill(null),
+          builderCompleted: false,
+          builderCorrect: false,
+          canGoNext: false
+        };
+      }
+
+      const builderState = item.builderState;
+
       const filled = item.tokens.map((token, idx) => (
         item.blankPositions.includes(idx)
           ? `<span class="blank" data-blank-index="${idx}">____</span>`
@@ -806,36 +825,105 @@
           <span class="verse-ref">${item.ref} (${TRANSLATION})</span>
           <div class="question">${filled}</div>
           <div class="word-bank">${shuffle(item.choices).map(c => `<button class="chip" data-word="${c}">${c}</button>`).join("")}</div>
-          <div id="feedback" class="feedback"></div>
+          <div id="feedback" class="feedback">Finish building the verse first.</div>
           <div class="controls">
-            <button id="checkBtn" class="btn btn-main">Check Verse</button>
+            <button id="checkBtn" class="btn btn-main" disabled>Check Verse</button>
             <button id="nextBtn" class="btn btn-ghost" disabled>Next</button>
           </div>
         </section>`;
 
       const blanks = [...gameArea.querySelectorAll(".blank")];
-      const selected = [];
+      const chips = [...gameArea.querySelectorAll("[data-word]")];
+      const checkBtn = document.getElementById("checkBtn");
+      const nextBtn = document.getElementById("nextBtn");
+      const feedback = document.getElementById("feedback");
 
-      gameArea.querySelectorAll("[data-word]").forEach(chip => {
+      function isBuilderComplete() {
+        return builderState.builderAnswers.every(Boolean);
+      }
+
+      function updateButtonStates() {
+        builderState.builderCompleted = isBuilderComplete();
+        checkBtn.disabled = !builderState.builderCompleted || builderState.builderCorrect;
+        nextBtn.disabled = !builderState.canGoNext;
+
+        if (!builderState.builderCorrect) {
+          feedback.textContent = builderState.builderCompleted
+            ? "Press Check Verse to submit your answer."
+            : "Finish building the verse first.";
+          feedback.className = "feedback";
+        }
+      }
+
+      function resetBuilderAttempt() {
+        builderState.builderAnswers = Array(item.blankPositions.length).fill(null);
+        builderState.builderCompleted = false;
+        builderState.builderCorrect = false;
+        builderState.canGoNext = false;
+
+        blanks.forEach(blank => {
+          blank.textContent = "____";
+          blank.classList.remove("blank-correct", "blank-wrong");
+        });
+
+        chips.forEach(chip => {
+          chip.classList.remove("used");
+          chip.disabled = false;
+        });
+
+        feedback.textContent = "Not quite right. Try again.";
+        feedback.className = "feedback error";
+        updateButtonStates();
+      }
+
+      function placeBuilderWord(chip, word) {
+        if (builderState.builderCorrect || chip.classList.contains("used")) return;
+        const blankIndex = builderState.builderAnswers.findIndex(answer => answer === null);
+        if (blankIndex === -1) return;
+
+        builderState.builderAnswers[blankIndex] = word;
+        blanks[blankIndex].textContent = word;
+        chip.classList.add("used");
+        chip.disabled = true;
+        updateButtonStates();
+      }
+
+      function checkBuilderAnswer() {
+        if (!isBuilderComplete() || builderState.builderCorrect) return;
+
+        const expected = item.blankPositions.map(i => item.tokens[i].clean);
+        const good = builderState.builderAnswers.every((word, idx) => word === expected[idx]);
+
+        if (good) {
+          builderState.builderCorrect = true;
+          builderState.canGoNext = true;
+          blanks.forEach(blank => blank.classList.add("blank-correct"));
+          chips.forEach(chip => chip.disabled = true);
+          feedback.textContent = "Correct! You can move to the next question.";
+          feedback.className = "feedback success";
+          handleScore(true, 15);
+          updateButtonStates();
+          return;
+        }
+
+        handleScore(false, 0);
+        resetBuilderAttempt();
+      }
+
+      chips.forEach(chip => {
         chip.addEventListener("click", () => {
-          if (chip.classList.contains("used") || selected.length >= blanks.length) return;
-          chip.classList.add("used");
-          selected.push(chip.dataset.word);
-          blanks[selected.length - 1].textContent = chip.dataset.word;
+          placeBuilderWord(chip, chip.dataset.word);
         });
       });
 
-      document.getElementById("checkBtn").addEventListener("click", () => {
-        const expected = item.blankPositions.map(i => item.tokens[i].clean);
-        const good = selected.length === expected.length && selected.every((w, i) => w === expected[i]);
-        const feedback = document.getElementById("feedback");
-        feedback.textContent = good ? `${encouragement(true)} Verse complete!` : encouragement(false);
-        feedback.className = `feedback ${good ? "success" : "error"}`;
-        handleScore(good, 15);
-        document.getElementById("nextBtn").disabled = false;
-      });
+      checkBtn.addEventListener("click", checkBuilderAnswer);
 
-      document.getElementById("nextBtn").addEventListener("click", next);
+      updateButtonStates();
+
+      nextBtn.addEventListener("click", () => {
+        if (!builderState.canGoNext) return;
+        next();
+      });
     }
 
     function renderOrder(item) {
@@ -872,7 +960,7 @@
         feedback.textContent = good ? `${encouragement(true)} Order is correct.` : encouragement(false);
         feedback.className = `feedback ${good ? "success" : "error"}`;
         handleScore(good, 20);
-        document.getElementById("nextBtn").disabled = false;
+        document.getElementById("nextBtn").disabled = !good;
       });
 
       document.getElementById("nextBtn").addEventListener("click", next);
