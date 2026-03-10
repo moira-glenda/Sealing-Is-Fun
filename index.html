@@ -419,32 +419,102 @@
       }));
     }
 
-    function randomSpacing() {
-      return 6 + Math.floor(Math.random() * 5);
+    const STOPWORDS = new Set([
+      "the", "that", "those", "this", "here", "there", "and", "but", "of", "to", "a", "an", "in", "on", "is", "are",
+      "i", "you", "he", "she", "it", "we", "they", "them", "my", "your", "our", "their", "his", "her", "its",
+      "who", "what", "which", "as", "at", "by", "for", "from", "into", "out", "up", "down", "with", "no", "not",
+      "will", "have", "has", "had", "be", "been", "being", "am", "do", "does", "did", "can", "so", "let", "also"
+    ]);
+
+    const BIBLICAL_PRIORITY_WORDS = new Set([
+      "philadelphia", "david", "holy", "true", "strength", "denied", "patiently", "trial", "overcome", "victorious",
+      "pillar", "temple", "name", "throne", "angel", "church", "key", "deeds", "door", "word", "synagogue", "satan",
+      "jews", "liars", "feet", "acknowledge", "loved", "command", "hour", "world", "test", "inhabitants", "earth",
+      "crown", "god", "jerusalem", "heaven", "spirit", "churches"
+    ]);
+
+    function isMeaningfulWord(word) {
+      const normalized = cleanWord(word).toLowerCase();
+      if (!normalized || normalized.length < 3) return false;
+      if (STOPWORDS.has(normalized)) return false;
+      if (/^\d+$/.test(normalized)) return false;
+      return true;
     }
 
-    function generateBlankPositions(tokens) {
-      const blanks = [];
-      let cursor = randomSpacing() - 1;
-      while (cursor < tokens.length) {
-        let picked = -1;
-        for (let i = cursor; i < tokens.length; i++) {
-          if (tokens[i].clean.length > 1) {
-            picked = i;
-            break;
+    function splitVerseIntoNaturalChunks(tokens) {
+      const minSize = 6;
+      const maxSize = 10;
+      const target = 8;
+      const chunks = [];
+      let start = 0;
+
+      while (start < tokens.length) {
+        const remaining = tokens.length - start;
+        if (remaining <= maxSize) {
+          chunks.push({ start, end: tokens.length });
+          break;
+        }
+
+        let bestEnd = Math.min(tokens.length, start + target);
+        let bestScore = -Infinity;
+        const maxEnd = Math.min(tokens.length, start + maxSize);
+
+        for (let end = start + minSize; end <= maxEnd; end += 1) {
+          const lastRaw = tokens[end - 1].raw;
+          const chunkSize = end - start;
+          let score = -Math.abs(chunkSize - target);
+
+          if (/[.!?;:]$/.test(lastRaw)) score += 5;
+          else if (/[,—]$/.test(lastRaw)) score += 3;
+          else if (/[)]$/.test(lastRaw)) score += 2;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestEnd = end;
           }
         }
-        if (picked === -1) break;
-        blanks.push(picked);
-        cursor = picked + randomSpacing();
+
+        chunks.push({ start, end: bestEnd });
+        start = bestEnd;
       }
 
-      if (!blanks.length) {
-        const fallback = tokens.findIndex(t => t.clean.length > 1);
-        if (fallback >= 0) blanks.push(fallback);
-      }
+      return chunks;
+    }
 
-      return blanks;
+    function getCandidateBlankWords(tokens, chunk) {
+      return tokens
+        .slice(chunk.start, chunk.end)
+        .map((token, idx) => ({
+          token,
+          absoluteIndex: chunk.start + idx,
+          localIndex: idx
+        }))
+        .filter(({ token }) => isMeaningfulWord(token.clean));
+    }
+
+    function scoreCandidate(candidate) {
+      const { token, localIndex } = candidate;
+      const normalized = token.normalized;
+      let score = 0;
+
+      if (BIBLICAL_PRIORITY_WORDS.has(normalized)) score += 8;
+      if (/^[A-Z]/.test(token.clean)) score += 4;
+      if (/(ing|ed|tion|ment|ness|ship|ous|ful|ive|ary)$/.test(normalized)) score += 3;
+      if (/(ity|ance|ence|ism|ize|ify)$/.test(normalized)) score += 2;
+
+      score += Math.min(token.clean.length, 10) * 0.5;
+      if (localIndex === 0) score -= 1;
+
+      return score;
+    }
+
+    function chooseBestBlankWord(tokens, chunk) {
+      const candidates = getCandidateBlankWords(tokens, chunk);
+      if (!candidates.length) return null;
+
+      return candidates
+        .slice()
+        .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0];
     }
 
     function buildVocabulary(baseWords, answer) {
@@ -452,65 +522,41 @@
     }
 
     function generateOptions(correct, contextWords, globalVocabulary) {
-      const pool = buildVocabulary([...contextWords, ...globalVocabulary], correct);
+      const meaningfulContext = contextWords.filter(isMeaningfulWord);
+      const meaningfulGlobal = globalVocabulary.filter(isMeaningfulWord);
+      const pool = buildVocabulary([...meaningfulContext, ...meaningfulGlobal], correct);
       const distractors = shuffle(pool).slice(0, 3);
       while (distractors.length < 3) {
-        distractors.push(`choice${distractors.length + 1}`);
+        const fallback = shuffle(meaningfulGlobal).find(word => !distractors.includes(word) && word.toLowerCase() !== correct.toLowerCase());
+        if (!fallback) break;
+        distractors.push(fallback);
       }
       return shuffle([correct, ...distractors]);
     }
 
     function generateMissingWords(verseText, globalVocabulary) {
       const tokens = tokenizeVerse(verseText);
-      const blankPositions = generateBlankPositions(tokens);
-      const chunks = [];
-      let chunkStart = 0;
-      let blankCursor = 0;
-
-      while (chunkStart < tokens.length) {
-        const size = randomSpacing();
-        let chunkEnd = Math.min(tokens.length, chunkStart + size);
-
-        if (blankCursor < blankPositions.length && blankPositions[blankCursor] < chunkStart) {
-          blankCursor += 1;
-        }
-
-        if (blankCursor < blankPositions.length) {
-          const nextBlank = blankPositions[blankCursor];
-          if (nextBlank >= chunkEnd) {
-            chunkEnd = Math.min(tokens.length, nextBlank + 1);
-          }
-        }
-
-        let chunkBlank = null;
-        if (
-          blankCursor < blankPositions.length
-          && blankPositions[blankCursor] >= chunkStart
-          && blankPositions[blankCursor] < chunkEnd
-        ) {
-          chunkBlank = blankPositions[blankCursor];
-          blankCursor += 1;
-        }
-
-        chunks.push({
-          start: chunkStart,
-          end: chunkEnd,
-          blankIndex: chunkBlank
-        });
-
-        chunkStart = chunkEnd;
-      }
+      const chunks = splitVerseIntoNaturalChunks(tokens);
+      const chunksWithBlanks = chunks
+        .map(chunk => {
+          const best = chooseBestBlankWord(tokens, chunk);
+          return {
+            ...chunk,
+            blankIndex: best ? best.absoluteIndex : null
+          };
+        })
+        .filter(chunk => chunk.blankIndex !== null);
 
       const verseWords = tokens.map(t => t.clean).filter(Boolean);
-      const quizChunks = chunks.filter(chunk => chunk.blankIndex !== null);
+      const blankPositions = chunksWithBlanks.map(chunk => chunk.blankIndex);
       return {
         tokens,
         blankPositions,
-        chunks: quizChunks,
-        prompts: blankPositions.map(index => ({
-          index,
-          answer: tokens[index].clean,
-          options: generateOptions(tokens[index].clean, verseWords, globalVocabulary)
+        chunks: chunksWithBlanks,
+        prompts: chunksWithBlanks.map(chunk => ({
+          index: chunk.blankIndex,
+          answer: tokens[chunk.blankIndex].clean,
+          options: generateOptions(tokens[chunk.blankIndex].clean, verseWords, globalVocabulary)
         }))
       };
     }
