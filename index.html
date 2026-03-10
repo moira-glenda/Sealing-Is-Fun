@@ -225,6 +225,23 @@
       color: #733f5a;
     }
 
+    .blank.blank-focus {
+      border-bottom-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(255, 79, 163, 0.18);
+    }
+
+    .blank.blank-correct {
+      background: #e8fff2;
+      border-bottom-color: var(--success);
+      color: #145b3e;
+    }
+
+    .blank.blank-wrong {
+      background: #fff0f4;
+      border-bottom-color: var(--error);
+      color: #8f1f40;
+    }
+
     .word-bank, .chunk-bank {
       display: flex;
       flex-wrap: wrap;
@@ -388,25 +405,128 @@
       return copy;
     }
 
-    function pickWord(text) {
-      const words = text.replace(/[^\w\s']/g, "").split(/\s+/).filter(w => w.length > 3);
-      return words[Math.floor(Math.random() * words.length)] || "word";
+    function cleanWord(word) {
+      return word.replace(/^[^\w']+|[^\w']+$/g, "");
+    }
+
+    function tokenizeVerse(text) {
+      return text.split(/\s+/).filter(Boolean).map(raw => ({
+        raw,
+        clean: cleanWord(raw),
+        normalized: cleanWord(raw).toLowerCase()
+      }));
+    }
+
+    function randomSpacing() {
+      return 6 + Math.floor(Math.random() * 5);
+    }
+
+    function generateBlankPositions(tokens) {
+      const blanks = [];
+      let cursor = randomSpacing() - 1;
+      while (cursor < tokens.length) {
+        let picked = -1;
+        for (let i = cursor; i < tokens.length; i++) {
+          if (tokens[i].clean.length > 1) {
+            picked = i;
+            break;
+          }
+        }
+        if (picked === -1) break;
+        blanks.push(picked);
+        cursor = picked + randomSpacing();
+      }
+
+      if (!blanks.length) {
+        const fallback = tokens.findIndex(t => t.clean.length > 1);
+        if (fallback >= 0) blanks.push(fallback);
+      }
+
+      return blanks;
+    }
+
+    function buildVocabulary(baseWords, answer) {
+      return [...new Set(baseWords.filter(word => word && word.toLowerCase() !== answer.toLowerCase()))];
+    }
+
+    function generateOptions(correct, contextWords, globalVocabulary) {
+      const pool = buildVocabulary([...contextWords, ...globalVocabulary], correct);
+      const distractors = shuffle(pool).slice(0, 3);
+      while (distractors.length < 3) {
+        distractors.push(`choice${distractors.length + 1}`);
+      }
+      return shuffle([correct, ...distractors]);
+    }
+
+    function generateMissingWords(verseText, globalVocabulary) {
+      const tokens = tokenizeVerse(verseText);
+      const blankPositions = generateBlankPositions(tokens);
+      const chunks = [];
+      let chunkStart = 0;
+      let blankCursor = 0;
+
+      while (chunkStart < tokens.length) {
+        const size = randomSpacing();
+        let chunkEnd = Math.min(tokens.length, chunkStart + size);
+
+        if (blankCursor < blankPositions.length && blankPositions[blankCursor] < chunkStart) {
+          blankCursor += 1;
+        }
+
+        if (blankCursor < blankPositions.length) {
+          const nextBlank = blankPositions[blankCursor];
+          if (nextBlank >= chunkEnd) {
+            chunkEnd = Math.min(tokens.length, nextBlank + 1);
+          }
+        }
+
+        let chunkBlank = null;
+        if (
+          blankCursor < blankPositions.length
+          && blankPositions[blankCursor] >= chunkStart
+          && blankPositions[blankCursor] < chunkEnd
+        ) {
+          chunkBlank = blankPositions[blankCursor];
+          blankCursor += 1;
+        }
+
+        chunks.push({
+          start: chunkStart,
+          end: chunkEnd,
+          blankIndex: chunkBlank
+        });
+
+        chunkStart = chunkEnd;
+      }
+
+      const verseWords = tokens.map(t => t.clean).filter(Boolean);
+      const quizChunks = chunks.filter(chunk => chunk.blankIndex !== null);
+      return {
+        tokens,
+        blankPositions,
+        chunks: quizChunks,
+        prompts: blankPositions.map(index => ({
+          index,
+          answer: tokens[index].clean,
+          options: generateOptions(tokens[index].clean, verseWords, globalVocabulary)
+        }))
+      };
     }
 
     function buildRounds() {
+      const globalVocabulary = verses
+        .flatMap(v => [...(v.keywords || []), ...tokenizeVerse(v.text).map(t => t.clean)])
+        .filter(Boolean);
+
       state.rounds.missing = verses.map(v => {
-        const answer = pickWord(v.text);
-        const options = shuffle([
-          answer,
-          ...shuffle(verses.flatMap(item => item.keywords || []).filter(w => w.toLowerCase() !== answer.toLowerCase())).slice(0, 3)
-        ]);
-        return { ...v, answer, options };
+        const generated = generateMissingWords(v.text, globalVocabulary);
+        return { ...v, ...generated };
       });
 
       state.rounds.builder = verses.slice(0, 5).map(v => {
-        const words = v.text.replace(/[^\w\s']/g, "").split(/\s+/);
-        const blanks = shuffle(words.filter(w => w.length > 4)).slice(0, 3);
-        return { ...v, blanks, choices: shuffle(blanks) };
+        const generated = generateMissingWords(v.text, globalVocabulary);
+        const blanks = generated.blankPositions.map(index => generated.tokens[index].clean);
+        return { ...v, ...generated, blanks, choices: shuffle(blanks) };
       });
 
       state.rounds.order = verses.slice(2).map(v => {
@@ -445,73 +565,122 @@
     function renderMissing(item) {
       state.answered = false;
       state.hintUsed = false;
-      const hidden = item.text.replace(new RegExp(`\\b${item.answer}\\b`, "i"), "____");
+
+      if (!item.chunkProgress || item.chunkProgress.verseIndex !== state.index) {
+        item.chunkProgress = { verseIndex: state.index, chunkIndex: 0, promptIndex: 0 };
+      }
+
+      const progress = item.chunkProgress;
+      const chunk = item.chunks[progress.chunkIndex];
+      const prompt = item.prompts[progress.promptIndex];
+
+      if (!chunk || !prompt) {
+        state.index += 1;
+        render();
+        return;
+      }
+
+      const displayTokens = item.tokens.slice(chunk.start, chunk.end).map((token, localIdx) => {
+        const absoluteIndex = chunk.start + localIdx;
+        if (absoluteIndex !== prompt.index) return token.raw;
+        return `<span id="activeBlank" class="blank blank-focus">_____</span>`;
+      }).join(" ");
+
       gameArea.innerHTML = `
         <section class="card">
           <span class="verse-ref">${item.ref}</span>
-          <div class="question">${hidden}</div>
+          <div class="feedback">Chunk ${progress.chunkIndex + 1}/${item.chunks.length}</div>
+          <div class="question">${displayTokens}</div>
           <div class="choices">
-            ${item.options.map(opt => `<button class="btn btn-choice" data-choice="${opt}">${opt}</button>`).join("")}
+            ${prompt.options.map(opt => `<button class="btn btn-choice" data-choice="${opt}">${opt}</button>`).join("")}
           </div>
           <div id="feedback" class="feedback" aria-live="polite"></div>
           <div class="controls">
             <button id="hintBtn" class="btn btn-ghost">Hint</button>
-            <button id="nextBtn" class="btn btn-main" disabled>Next</button>
+            <button id="nextBtn" class="btn btn-main" disabled>Next Chunk</button>
           </div>
         </section>`;
 
       const feedback = document.getElementById("feedback");
       const nextBtn = document.getElementById("nextBtn");
+      const blankEl = document.getElementById("activeBlank");
 
       gameArea.querySelectorAll("[data-choice]").forEach(btn => {
         btn.addEventListener("click", () => {
           if (state.answered) return;
-          const isCorrect = btn.dataset.choice.toLowerCase() === item.answer.toLowerCase();
-          state.answered = true;
-          nextBtn.disabled = false;
-          gameArea.querySelectorAll("[data-choice]").forEach(b => {
-            const ok = b.dataset.choice.toLowerCase() === item.answer.toLowerCase();
-            b.classList.add(ok ? "correct" : "wrong");
-            b.disabled = true;
-          });
-          handleScore(isCorrect, state.hintUsed ? 5 : 10);
-          feedback.textContent = isCorrect ? encouragement(true) : `Correct word: ${item.answer}. ${encouragement(false)}`;
-          feedback.className = `feedback ${isCorrect ? "success" : "error"}`;
+          const isCorrect = btn.dataset.choice.toLowerCase() === prompt.answer.toLowerCase();
+
+          if (isCorrect) {
+            state.answered = true;
+            nextBtn.disabled = false;
+            blankEl.textContent = prompt.answer;
+            blankEl.classList.remove("blank-focus", "blank-wrong");
+            blankEl.classList.add("blank-correct");
+
+            gameArea.querySelectorAll("[data-choice]").forEach(choice => {
+              const ok = choice.dataset.choice.toLowerCase() === prompt.answer.toLowerCase();
+              choice.classList.add(ok ? "correct" : "wrong");
+              choice.disabled = true;
+            });
+
+            handleScore(true, state.hintUsed ? 5 : 10);
+            feedback.textContent = encouragement(true);
+            feedback.className = "feedback success";
+
+            setTimeout(() => {
+              blankEl.classList.remove("blank-correct");
+            }, 500);
+          } else {
+            btn.classList.add("wrong");
+            btn.disabled = true;
+            blankEl.classList.add("blank-wrong");
+            feedback.textContent = "Not quite—try again.";
+            feedback.className = "feedback error";
+            handleScore(false, 0);
+
+            setTimeout(() => {
+              blankEl.classList.remove("blank-wrong");
+            }, 450);
+          }
         });
       });
 
       document.getElementById("hintBtn").addEventListener("click", () => {
         if (state.hintUsed || state.answered) return;
         state.hintUsed = true;
-        const choices = [...gameArea.querySelectorAll("[data-choice]")];
-        const wrong = choices.filter(c => c.dataset.choice.toLowerCase() !== item.answer.toLowerCase());
+        const choices = [...gameArea.querySelectorAll("[data-choice]:not([disabled])")];
+        const wrong = choices.filter(c => c.dataset.choice.toLowerCase() !== prompt.answer.toLowerCase());
         shuffle(wrong).slice(0, 2).forEach(el => {
           el.disabled = true;
           el.classList.add("used");
         });
-        feedback.textContent = `Hint: starts with “${item.answer[0]}”`;
+        feedback.textContent = `Hint: starts with “${prompt.answer[0]}”`;
         feedback.className = "feedback";
       });
 
-      nextBtn.addEventListener("click", next);
+      nextBtn.addEventListener("click", () => {
+        progress.chunkIndex += 1;
+        progress.promptIndex += 1;
+
+        if (progress.chunkIndex >= item.chunks.length || progress.promptIndex >= item.prompts.length) {
+          state.index += 1;
+        }
+
+        render();
+      });
     }
 
     function renderBuilder(item) {
-      const words = item.text.split(" ");
-      let used = [];
-      const replaced = words.map(w => {
-        const clean = w.replace(/[^\w']/g, "");
-        if (item.blanks.includes(clean) && !used.includes(clean)) {
-          used.push(clean);
-          return `<span class="blank" data-blank="${clean}">____</span>`;
-        }
-        return w;
-      }).join(" ");
+      const filled = item.tokens.map((token, idx) => (
+        item.blankPositions.includes(idx)
+          ? `<span class="blank" data-blank-index="${idx}">____</span>`
+          : token.raw
+      )).join(" ");
 
       gameArea.innerHTML = `
         <section class="card">
           <span class="verse-ref">${item.ref}</span>
-          <div class="question">${replaced}</div>
+          <div class="question">${filled}</div>
           <div class="word-bank">${shuffle(item.choices).map(c => `<button class="chip" data-word="${c}">${c}</button>`).join("")}</div>
           <div id="feedback" class="feedback"></div>
           <div class="controls">
@@ -533,7 +702,8 @@
       });
 
       document.getElementById("checkBtn").addEventListener("click", () => {
-        const good = selected.length === item.blanks.length && selected.every((w, i) => w === item.blanks[i]);
+        const expected = item.blankPositions.map(i => item.tokens[i].clean);
+        const good = selected.length === expected.length && selected.every((w, i) => w === expected[i]);
         const feedback = document.getElementById("feedback");
         feedback.textContent = good ? `${encouragement(true)} Verse complete!` : encouragement(false);
         feedback.className = `feedback ${good ? "success" : "error"}`;
