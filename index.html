@@ -517,21 +517,97 @@
         .sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0];
     }
 
+    const CATEGORY_POOLS = {
+      place: [
+        "Philadelphia", "Ephesus", "Smyrna", "Pergamum", "Thyatira", "Sardis", "Laodicea", "Jerusalem", "Bethlehem", "heaven", "earth", "world"
+      ],
+      person: [
+        "David", "Moses", "Abraham", "Jacob", "John", "Peter", "Paul", "angel", "God", "Spirit", "Satan", "Jews"
+      ],
+      object: [
+        "key", "door", "pillar", "temple", "crown", "throne", "altar", "name", "synagogue", "church", "churches", "feet"
+      ],
+      action: [
+        "overcome", "endure", "deny", "keep", "open", "shut", "worship", "conquer", "hold", "hear", "write", "acknowledge", "test"
+      ],
+      spiritual: [
+        "holy", "true", "victorious", "trial", "command", "word", "deeds", "strength", "loved", "patiently", "hour"
+      ]
+    };
+
+    const CATEGORY_LOOKUPS = {
+      place: new Set(CATEGORY_POOLS.place.map(word => word.toLowerCase())),
+      person: new Set(CATEGORY_POOLS.person.map(word => word.toLowerCase())),
+      object: new Set(CATEGORY_POOLS.object.map(word => word.toLowerCase())),
+      action: new Set(CATEGORY_POOLS.action.map(word => word.toLowerCase())),
+      spiritual: new Set(CATEGORY_POOLS.spiritual.map(word => word.toLowerCase()))
+    };
+
     function buildVocabulary(baseWords, answer) {
       return [...new Set(baseWords.filter(word => word && word.toLowerCase() !== answer.toLowerCase()))];
     }
 
-    function generateOptions(correct, contextWords, globalVocabulary) {
-      const meaningfulContext = contextWords.filter(isMeaningfulWord);
-      const meaningfulGlobal = globalVocabulary.filter(isMeaningfulWord);
-      const pool = buildVocabulary([...meaningfulContext, ...meaningfulGlobal], correct);
-      const distractors = shuffle(pool).slice(0, 3);
-      while (distractors.length < 3) {
-        const fallback = shuffle(meaningfulGlobal).find(word => !distractors.includes(word) && word.toLowerCase() !== correct.toLowerCase());
-        if (!fallback) break;
-        distractors.push(fallback);
+    function detectWordCategory(word) {
+      const normalized = cleanWord(word).toLowerCase();
+      if (!normalized) return "spiritual";
+
+      if (CATEGORY_LOOKUPS.place.has(normalized)) return "place";
+      if (CATEGORY_LOOKUPS.person.has(normalized)) return "person";
+      if (CATEGORY_LOOKUPS.object.has(normalized)) return "object";
+      if (CATEGORY_LOOKUPS.action.has(normalized)) return "action";
+      if (CATEGORY_LOOKUPS.spiritual.has(normalized)) return "spiritual";
+
+      if (/^[A-Z]/.test(word)) return "person";
+      if (/(ing|ed)$/.test(normalized)) return "action";
+      return "spiritual";
+    }
+
+    function getDistractorsForCategory(category, correctWord, contextWords, globalVocabulary) {
+      const normalizedCorrect = correctWord.toLowerCase();
+      const inCategory = (candidate) => detectWordCategory(candidate) === category;
+      const meaningfulContext = contextWords
+        .filter(isMeaningfulWord)
+        .filter(inCategory);
+      const meaningfulGlobal = globalVocabulary
+        .filter(isMeaningfulWord)
+        .filter(inCategory);
+      const categoryPool = CATEGORY_POOLS[category] || [];
+
+      const rankedPool = buildVocabulary([
+        ...meaningfulContext,
+        ...categoryPool,
+        ...meaningfulGlobal
+      ], correctWord)
+        .filter(word => word.toLowerCase() !== normalizedCorrect)
+        .sort((a, b) => {
+          const aInContext = meaningfulContext.includes(a) ? 1 : 0;
+          const bInContext = meaningfulContext.includes(b) ? 1 : 0;
+          return bInContext - aInContext;
+        });
+
+      return shuffle(rankedPool).slice(0, 3);
+    }
+
+    function generateConfusingOptions(correctWord, contextWords, globalVocabulary) {
+      const category = detectWordCategory(correctWord);
+      const distractors = getDistractorsForCategory(category, correctWord, contextWords, globalVocabulary);
+
+      if (distractors.length < 3) {
+        const meaningfulFallback = buildVocabulary(
+          [...contextWords, ...globalVocabulary].filter(isMeaningfulWord),
+          correctWord
+        );
+        for (const candidate of shuffle(meaningfulFallback)) {
+          if (!distractors.includes(candidate)) distractors.push(candidate);
+          if (distractors.length === 3) break;
+        }
       }
-      return shuffle([correct, ...distractors]);
+
+      return shuffle([correctWord, ...distractors.slice(0, 3)]);
+    }
+
+    function generateOptions(correct, contextWords, globalVocabulary) {
+      return generateConfusingOptions(correct, contextWords, globalVocabulary);
     }
 
     function generateMissingWords(verseText, globalVocabulary) {
