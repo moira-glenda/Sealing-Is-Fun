@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verse Memorization Game</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a id="back-to-chapter" class="btn btn-ghost" href="chapters.html">← Chapter</a>
+    <h1>Verse Memorization</h1>
+  </header>
+
+  <main class="page-wrap">
+    <section class="verse-meta">
+      <h2 id="verse-ref"></h2>
+      <p id="verse-text" class="verse-text"></p>
+      <p class="hint">Note: NIV text is copyrighted. Replace placeholder entries in <code>data.js</code> with your licensed NIV text.</p>
+    </section>
+
+    <section class="mode-tabs" id="mode-tabs"></section>
+
+    <section id="mode-content" class="mode-content"></section>
+  </main>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
