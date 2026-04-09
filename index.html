@@ -3,48 +3,67 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Verse Ladder Challenge</title>
+  <title>Pink Verse Arcade</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <main class="app">
     <header class="top">
-      <h1>Verse Ladder Challenge</h1>
-      <p class="subtitle">Revelation 3:14–22 Memorization Game</p>
+      <p class="badge">Mobile-First Bible Memory Game</p>
+      <h1>Pink Verse Arcade</h1>
+      <p class="subtitle">Revelation 3:14–22 • Pick a mode and play.</p>
     </header>
 
-    <section class="controls">
-      <button id="shuffleBtn">Shuffle Cards</button>
-      <button id="resetOrderBtn">Reset 14 → 22</button>
-      <button id="toggleNumbersBtn">Toggle Verse Numbers</button>
-    </section>
-
-    <section class="status">
-      <div><strong>Mode:</strong> <span id="modeText">Order Race</span></div>
-      <div><strong>Timer:</strong> <span id="timerText">Off</span></div>
-      <button id="lightningBtn">Lightning (10s)</button>
-      <button id="stopTimerBtn">Stop Timer</button>
-    </section>
-
-    <section class="cards-wrap">
-      <h2>Cards</h2>
-      <p class="hint">Drag cards to reorder. Double-click a card to mark it as recited.</p>
-      <ul id="cards" class="cards"></ul>
-    </section>
-
-    <section class="recite">
-      <h2>Speak &amp; Flip</h2>
-      <button id="drawBtn">Draw Random Verse</button>
-      <div id="drawnCard" class="drawn">No verse drawn yet.</div>
-    </section>
-
-    <section class="scores">
-      <h2>Quick Score Tracker</h2>
-      <div class="score-controls">
-        <input id="playerName" type="text" placeholder="Player name" />
-        <button id="addPlayerBtn">Add Player</button>
+    <section class="panel mode-picker" aria-label="Game mode picker">
+      <h2>Choose a Game</h2>
+      <div class="mode-grid">
+        <button class="mode-btn active" data-mode="missing">Missing Word Logic</button>
+        <button class="mode-btn" data-mode="builder">Verse Builder</button>
+        <button class="mode-btn" data-mode="order">Order Verse Cards</button>
       </div>
-      <ul id="players" class="players"></ul>
+      <p id="modeDescription" class="hint">Fill in the missing words from a verse.</p>
+    </section>
+
+    <section id="missingGame" class="panel game-panel">
+      <div class="panel-head">
+        <h2>Missing Word Logic</h2>
+        <button id="nextMissingBtn">New Puzzle</button>
+      </div>
+      <p id="missingPrompt" class="prompt"></p>
+      <div id="missingChoices" class="choice-grid"></div>
+      <p id="missingFeedback" class="feedback"></p>
+      <p class="score">Score: <strong id="missingScore">0</strong></p>
+    </section>
+
+    <section id="builderGame" class="panel game-panel hidden">
+      <div class="panel-head">
+        <h2>Verse Builder</h2>
+        <button id="newBuilderBtn">New Verse</button>
+      </div>
+      <p id="builderVerseRef" class="hint"></p>
+      <div id="builderTarget" class="token-zone" aria-label="Build area"></div>
+      <div id="builderWordBank" class="token-zone bank" aria-label="Word bank"></div>
+      <div class="builder-actions">
+        <button id="checkBuilderBtn">Check Answer</button>
+        <button id="resetBuilderBtn">Clear Build</button>
+      </div>
+      <p id="builderFeedback" class="feedback"></p>
+      <p class="score">Score: <strong id="builderScore">0</strong></p>
+    </section>
+
+    <section id="orderGame" class="panel game-panel hidden">
+      <div class="panel-head">
+        <h2>Order Verse Cards</h2>
+        <div class="cluster">
+          <button id="shuffleBtn">Shuffle</button>
+          <button id="resetOrderBtn">Reset</button>
+          <button id="toggleNumbersBtn">Toggle Numbers</button>
+        </div>
+      </div>
+      <p class="hint">Drag cards to put verses in order from 14 to 22.</p>
+      <ul id="cards" class="cards"></ul>
+      <button id="checkOrderBtn">Check Order</button>
+      <p id="orderFeedback" class="feedback"></p>
     </section>
   </main>
 
