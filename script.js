@@ -38,13 +38,12 @@ const verses = [
 ];
 
 const modeDescription = {
-  missing: "Fill in the missing words from a verse.",
-  builder: "Rebuild a verse by selecting words in the correct order.",
-  order: "Drag verses into biblical order from 14 to 22."
+  missing: "Fill in around five missing words per verse from Revelation 3:14–22.",
+  builder: "Rebuild a verse by arranging 5-word phrase cards in the correct order.",
+  order: "Drag full verse cards into biblical order from 14 to 22."
 };
 
 let currentMode = "missing";
-let showNumbers = true;
 
 const modeButtons = document.querySelectorAll(".mode-btn");
 const gamePanels = {
@@ -56,11 +55,21 @@ const gamePanels = {
 const modeDescriptionEl = document.getElementById("modeDescription");
 
 // Missing word logic
+const missingProgressEl = document.getElementById("missingProgress");
 const missingPromptEl = document.getElementById("missingPrompt");
 const missingChoicesEl = document.getElementById("missingChoices");
 const missingFeedbackEl = document.getElementById("missingFeedback");
 const missingScoreEl = document.getElementById("missingScore");
-let missingState = { answer: "", score: 0 };
+const nextMissingBtn = document.getElementById("nextMissingBtn");
+let missingState = {
+  score: 0,
+  verseIndex: 0,
+  blankIndex: 0,
+  blankWordIndexes: [],
+  answer: "",
+  answered: false,
+  completed: false
+};
 
 // Verse builder
 const builderVerseRefEl = document.getElementById("builderVerseRef");
@@ -68,7 +77,7 @@ const builderTargetEl = document.getElementById("builderTarget");
 const builderWordBankEl = document.getElementById("builderWordBank");
 const builderFeedbackEl = document.getElementById("builderFeedback");
 const builderScoreEl = document.getElementById("builderScore");
-let builderState = { verse: null, bankWords: [], selectedWords: [], score: 0 };
+let builderState = { verse: null, bankChunks: [], selectedChunks: [], score: 0 };
 
 // Order cards
 const cardsEl = document.getElementById("cards");
@@ -105,69 +114,154 @@ function setFeedback(el, message, type = "") {
   }
 }
 
-function createMissingPuzzle() {
-  const verse = randomItem(verses);
-  const words = verse.text.split(/\s+/);
-  const candidates = words.filter((word) => sanitizeWord(word).length > 3);
+function getMissingWordIndexesForVerse(verseText) {
+  const words = verseText.split(/\s+/);
+  const priorityIndexes = [];
 
-  if (candidates.length < 1) {
-    createMissingPuzzle();
+  words.forEach((word, index) => {
+    if (sanitizeWord(word).length >= 4) {
+      priorityIndexes.push(index);
+    }
+  });
+
+  const chosen = [];
+  const step = Math.max(1, Math.floor(priorityIndexes.length / 5));
+
+  for (let i = 0; i < priorityIndexes.length && chosen.length < 5; i += step) {
+    chosen.push(priorityIndexes[i]);
+  }
+
+  while (chosen.length < Math.min(5, priorityIndexes.length)) {
+    const randomIndex = randomItem(priorityIndexes);
+    if (!chosen.includes(randomIndex)) {
+      chosen.push(randomIndex);
+    }
+  }
+
+  return chosen.sort((a, b) => a - b);
+}
+
+function renderCurrentMissingPrompt() {
+  if (missingState.completed) {
+    missingProgressEl.textContent = "Completed: Revelation 3:14–22";
+    missingPromptEl.innerHTML = "You finished all verses and missing words. Great work!";
+    missingChoicesEl.innerHTML = "";
+    nextMissingBtn.disabled = true;
     return;
   }
 
-  const answerWord = randomItem(candidates);
-  const answer = sanitizeWord(answerWord);
+  const verse = verses[missingState.verseIndex];
+  const words = verse.text.split(/\s+/);
+  const blankWordIndex = missingState.blankWordIndexes[missingState.blankIndex];
+  const originalWord = words[blankWordIndex];
 
-  const displayText = verse.text.replace(answerWord, "____");
+  missingState.answer = sanitizeWord(originalWord);
+
+  words[blankWordIndex] = "____";
+  const displayText = words.join(" ");
 
   const distractors = shuffleList(
     verses
       .flatMap((v) => v.text.split(/\s+/))
       .filter((word) => {
         const cleaned = sanitizeWord(word);
-        return cleaned.length > 3 && cleaned !== answer;
+        return cleaned.length >= 4 && cleaned !== missingState.answer;
       })
   )
     .slice(0, 3)
     .map(sanitizeWord);
 
-  const choices = shuffleList([answer, ...distractors]);
+  const choices = shuffleList([missingState.answer, ...distractors]);
 
-  missingState.answer = answer;
+  missingProgressEl.textContent = `Verse ${verse.number} • Missing word ${missingState.blankIndex + 1} of ${missingState.blankWordIndexes.length}`;
+  missingPromptEl.innerHTML = `<strong>Revelation 3:${verse.number}</strong> — ${displayText}`;
 
-  missingPromptEl.innerHTML = `<strong>Verse ${verse.number}:</strong> ${displayText}`;
   missingChoicesEl.innerHTML = "";
-
   choices.forEach((choice) => {
     const button = document.createElement("button");
     button.textContent = choice;
-    button.addEventListener("click", () => {
-      if (choice === missingState.answer) {
-        missingState.score += 1;
-        missingScoreEl.textContent = String(missingState.score);
-        setFeedback(missingFeedbackEl, "Correct! Great memory.", "ok");
-      } else {
-        setFeedback(missingFeedbackEl, `Not quite. Correct word: ${missingState.answer}.`, "bad");
-      }
-    });
+    button.disabled = missingState.answered;
+    button.addEventListener("click", () => handleMissingGuess(choice));
     missingChoicesEl.appendChild(button);
   });
 
-  setFeedback(missingFeedbackEl, "");
+  nextMissingBtn.disabled = !missingState.answered;
 }
 
-function createBuilderRound() {
-  const verse = randomItem(verses);
-  const words = verse.text
+function startMissingVerse(verseIndex) {
+  missingState.verseIndex = verseIndex;
+  missingState.blankIndex = 0;
+  missingState.blankWordIndexes = getMissingWordIndexesForVerse(verses[verseIndex].text);
+  missingState.answered = false;
+  setFeedback(missingFeedbackEl, "");
+  renderCurrentMissingPrompt();
+}
+
+function handleMissingGuess(choice) {
+  if (missingState.answered || missingState.completed) {
+    return;
+  }
+
+  if (choice === missingState.answer) {
+    missingState.score += 1;
+    missingScoreEl.textContent = String(missingState.score);
+    missingState.answered = true;
+    nextMissingBtn.disabled = false;
+    setFeedback(missingFeedbackEl, "Correct! Tap next for the next missing word.", "ok");
+  } else {
+    setFeedback(missingFeedbackEl, `Not quite. Try again.`, "bad");
+  }
+}
+
+function moveToNextMissingWord() {
+  if (missingState.completed || !missingState.answered) {
+    return;
+  }
+
+  const atEndOfVerse = missingState.blankIndex >= missingState.blankWordIndexes.length - 1;
+  const atEndOfPassage = missingState.verseIndex >= verses.length - 1;
+
+  if (!atEndOfVerse) {
+    missingState.blankIndex += 1;
+    missingState.answered = false;
+    setFeedback(missingFeedbackEl, "");
+    renderCurrentMissingPrompt();
+    return;
+  }
+
+  if (!atEndOfPassage) {
+    startMissingVerse(missingState.verseIndex + 1);
+    return;
+  }
+
+  missingState.completed = true;
+  setFeedback(missingFeedbackEl, "Amazing! You reached Revelation 3:22.", "ok");
+  renderCurrentMissingPrompt();
+}
+
+function buildPhraseChunks(verseText, chunkSize = 5) {
+  const words = verseText
     .replace(/[.,;:!?]/g, "")
     .split(/\s+/)
     .filter(Boolean);
 
-  builderState.verse = verse;
-  builderState.selectedWords = [];
-  builderState.bankWords = shuffleList(words.map((word, index) => ({ id: `${word}-${index}`, word })));
+  const chunks = [];
+  for (let i = 0; i < words.length; i += chunkSize) {
+    chunks.push(words.slice(i, i + chunkSize).join(" "));
+  }
 
-  builderVerseRefEl.textContent = `Build verse ${verse.number}`;
+  return chunks;
+}
+
+function createBuilderRound() {
+  const verse = randomItem(verses);
+  const chunks = buildPhraseChunks(verse.text, 5);
+
+  builderState.verse = verse;
+  builderState.selectedChunks = [];
+  builderState.bankChunks = shuffleList(chunks.map((chunk, index) => ({ id: `chunk-${index}`, chunk })));
+
+  builderVerseRefEl.textContent = `Build Revelation 3:${verse.number} using phrase cards (~5 words each)`;
   setFeedback(builderFeedbackEl, "");
   renderBuilderZones();
 }
@@ -176,26 +270,26 @@ function renderBuilderZones() {
   builderTargetEl.innerHTML = "";
   builderWordBankEl.innerHTML = "";
 
-  builderState.selectedWords.forEach((token, index) => {
+  builderState.selectedChunks.forEach((token, index) => {
     const button = document.createElement("button");
-    button.className = "token";
-    button.textContent = token.word;
+    button.className = "token phrase-token";
+    button.textContent = token.chunk;
     button.title = "Tap to remove";
     button.addEventListener("click", () => {
-      builderState.bankWords.push(token);
-      builderState.selectedWords.splice(index, 1);
+      builderState.bankChunks.push(token);
+      builderState.selectedChunks.splice(index, 1);
       renderBuilderZones();
     });
     builderTargetEl.appendChild(button);
   });
 
-  builderState.bankWords.forEach((token, index) => {
+  builderState.bankChunks.forEach((token, index) => {
     const button = document.createElement("button");
-    button.className = "token";
-    button.textContent = token.word;
+    button.className = "token phrase-token";
+    button.textContent = token.chunk;
     button.addEventListener("click", () => {
-      builderState.selectedWords.push(token);
-      builderState.bankWords.splice(index, 1);
+      builderState.selectedChunks.push(token);
+      builderState.bankChunks.splice(index, 1);
       renderBuilderZones();
     });
     builderWordBankEl.appendChild(button);
@@ -205,32 +299,28 @@ function renderBuilderZones() {
 function checkBuilderAnswer() {
   if (!builderState.verse) return;
 
-  const expected = builderState.verse.text
-    .replace(/[.,;:!?]/g, "")
-    .split(/\s+/)
-    .map((word) => word.toLowerCase());
-
-  const actual = builderState.selectedWords.map((token) => token.word.toLowerCase());
+  const expected = buildPhraseChunks(builderState.verse.text, 5).map((chunk) => chunk.toLowerCase());
+  const actual = builderState.selectedChunks.map((token) => token.chunk.toLowerCase());
 
   if (expected.length !== actual.length) {
-    setFeedback(builderFeedbackEl, "Keep going—use every word in the bank.", "bad");
+    setFeedback(builderFeedbackEl, "Keep going—use every phrase card in the bank.", "bad");
     return;
   }
 
-  const isCorrect = expected.every((word, index) => word === actual[index]);
+  const isCorrect = expected.every((chunk, index) => chunk === actual[index]);
 
   if (isCorrect) {
     builderState.score += 1;
     builderScoreEl.textContent = String(builderState.score);
     setFeedback(builderFeedbackEl, "Perfect build!", "ok");
   } else {
-    setFeedback(builderFeedbackEl, "Order is close, but not correct yet.", "bad");
+    setFeedback(builderFeedbackEl, "Phrase order is close, but not correct yet.", "bad");
   }
 }
 
 function resetBuilderSelection() {
-  builderState.bankWords = [...builderState.bankWords, ...builderState.selectedWords];
-  builderState.selectedWords = [];
+  builderState.bankChunks = [...builderState.bankChunks, ...builderState.selectedChunks];
+  builderState.selectedChunks = [];
   renderBuilderZones();
   setFeedback(builderFeedbackEl, "Selection cleared.");
 }
@@ -243,10 +333,7 @@ function renderOrderCards() {
     li.className = "card";
     li.draggable = true;
     li.dataset.index = String(idx);
-    li.innerHTML = `
-      ${showNumbers ? `<span class="verse-num">${verse.number}</span>` : ""}
-      <span>${verse.text}</span>
-    `;
+    li.innerHTML = `<span>${verse.text}</span>`;
 
     li.addEventListener("dragstart", (event) => {
       dragSource = Number(event.currentTarget.dataset.index);
@@ -276,7 +363,7 @@ function renderOrderCards() {
 function checkOrder() {
   const correct = orderCards.every((verse, index) => verse.number === 14 + index);
   if (correct) {
-    setFeedback(orderFeedbackEl, "Excellent! Every card is in the right order.", "ok");
+    setFeedback(orderFeedbackEl, "Excellent! Every verse sentence is in the right order.", "ok");
   } else {
     setFeedback(orderFeedbackEl, "Not quite yet. Keep arranging the cards.", "bad");
   }
@@ -286,7 +373,7 @@ modeButtons.forEach((button) => {
   button.addEventListener("click", () => setMode(button.dataset.mode));
 });
 
-document.getElementById("nextMissingBtn").addEventListener("click", createMissingPuzzle);
+nextMissingBtn.addEventListener("click", moveToNextMissingWord);
 
 document.getElementById("newBuilderBtn").addEventListener("click", createBuilderRound);
 document.getElementById("checkBuilderBtn").addEventListener("click", checkBuilderAnswer);
@@ -301,17 +388,12 @@ document.getElementById("shuffleBtn").addEventListener("click", () => {
 document.getElementById("resetOrderBtn").addEventListener("click", () => {
   orderCards = [...verses];
   renderOrderCards();
-  setFeedback(orderFeedbackEl, "Order reset to 14 → 22.");
-});
-
-document.getElementById("toggleNumbersBtn").addEventListener("click", () => {
-  showNumbers = !showNumbers;
-  renderOrderCards();
+  setFeedback(orderFeedbackEl, "Cards reset.");
 });
 
 document.getElementById("checkOrderBtn").addEventListener("click", checkOrder);
 
-createMissingPuzzle();
+startMissingVerse(0);
 createBuilderRound();
 orderCards = shuffleList(orderCards);
 renderOrderCards();

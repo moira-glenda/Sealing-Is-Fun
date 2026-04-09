@@ -21,16 +21,19 @@
         <button class="mode-btn" data-mode="builder">Verse Builder</button>
         <button class="mode-btn" data-mode="order">Order Verse Cards</button>
       </div>
-      <p id="modeDescription" class="hint">Fill in the missing words from a verse.</p>
+      <p id="modeDescription" class="hint">Fill in around five missing words per verse from Revelation 3:14–22.</p>
     </section>
 
     <section id="missingGame" class="panel game-panel">
       <div class="panel-head">
         <h2>Missing Word Logic</h2>
-        <button id="nextMissingBtn">New Puzzle</button>
       </div>
+      <p id="missingProgress" class="hint"></p>
       <p id="missingPrompt" class="prompt"></p>
       <div id="missingChoices" class="choice-grid"></div>
+      <div class="builder-actions">
+        <button id="nextMissingBtn" disabled>Next Missing Word</button>
+      </div>
       <p id="missingFeedback" class="feedback"></p>
       <p class="score">Score: <strong id="missingScore">0</strong></p>
     </section>
@@ -42,7 +45,7 @@
       </div>
       <p id="builderVerseRef" class="hint"></p>
       <div id="builderTarget" class="token-zone" aria-label="Build area"></div>
-      <div id="builderWordBank" class="token-zone bank" aria-label="Word bank"></div>
+      <div id="builderWordBank" class="token-zone bank" aria-label="Phrase bank"></div>
       <div class="builder-actions">
         <button id="checkBuilderBtn">Check Answer</button>
         <button id="resetBuilderBtn">Clear Build</button>
@@ -57,10 +60,9 @@
         <div class="cluster">
           <button id="shuffleBtn">Shuffle</button>
           <button id="resetOrderBtn">Reset</button>
-          <button id="toggleNumbersBtn">Toggle Numbers</button>
         </div>
       </div>
-      <p class="hint">Drag cards to put verses in order from 14 to 22.</p>
+      <p class="hint">Drag one full verse sentence per card into Revelation 3:14 → 3:22 order.</p>
       <ul id="cards" class="cards"></ul>
       <button id="checkOrderBtn">Check Order</button>
       <p id="orderFeedback" class="feedback"></p>
