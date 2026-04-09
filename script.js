@@ -216,7 +216,7 @@ function renderCurrentMissingPrompt() {
 
   missingState.blankWordIndexes.forEach((wordIndex, slotIndex) => {
     const assigned = missingState.assignments[slotIndex];
-    const slotText = assigned || "drop";
+    const slotText = assigned || "";
     words[wordIndex] = `<span class="blank-slot" data-slot-index="${slotIndex}">${slotText}</span>`;
   });
 
