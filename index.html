@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verse Ladder Challenge</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="top">
+      <h1>Verse Ladder Challenge</h1>
+      <p class="subtitle">Revelation 3:14–22 Memorization Game</p>
+    </header>
+
+    <section class="controls">
+      <button id="shuffleBtn">Shuffle Cards</button>
+      <button id="resetOrderBtn">Reset 14 → 22</button>
+      <button id="toggleNumbersBtn">Toggle Verse Numbers</button>
+    </section>
+
+    <section class="status">
+      <div><strong>Mode:</strong> <span id="modeText">Order Race</span></div>
+      <div><strong>Timer:</strong> <span id="timerText">Off</span></div>
+      <button id="lightningBtn">Lightning (10s)</button>
+      <button id="stopTimerBtn">Stop Timer</button>
+    </section>
+
+    <section class="cards-wrap">
+      <h2>Cards</h2>
+      <p class="hint">Drag cards to reorder. Double-click a card to mark it as recited.</p>
+      <ul id="cards" class="cards"></ul>
+    </section>
+
+    <section class="recite">
+      <h2>Speak &amp; Flip</h2>
+      <button id="drawBtn">Draw Random Verse</button>
+      <div id="drawnCard" class="drawn">No verse drawn yet.</div>
+    </section>
+
+    <section class="scores">
+      <h2>Quick Score Tracker</h2>
+      <div class="score-controls">
+        <input id="playerName" type="text" placeholder="Player name" />
+        <button id="addPlayerBtn">Add Player</button>
+      </div>
+      <ul id="players" class="players"></ul>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

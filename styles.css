@@ -1,0 +1,139 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1220;
+  --panel: #181d30;
+  --card: #232a45;
+  --accent: #67b7ff;
+  --text: #ecf1ff;
+  --muted: #b9c3e0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: radial-gradient(circle at top, #1a2142, var(--bg) 45%);
+  color: var(--text);
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.2rem;
+}
+
+.top h1 {
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  margin-top: 0;
+  color: var(--muted);
+}
+
+.controls,
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+button,
+input {
+  border: 1px solid #394366;
+  background: #222a49;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.55rem 0.8rem;
+}
+
+button:hover {
+  border-color: var(--accent);
+  cursor: pointer;
+}
+
+.cards-wrap,
+.recite,
+.scores,
+.status {
+  background: var(--panel);
+  border: 1px solid #303a5c;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid #3c4671;
+  border-radius: 10px;
+  padding: 0.85rem;
+  user-select: none;
+}
+
+.card.dragging {
+  opacity: 0.45;
+}
+
+.card.done {
+  border-color: #5eda98;
+  box-shadow: 0 0 0 1px #5eda98 inset;
+}
+
+.verse-num {
+  font-weight: 700;
+  color: var(--accent);
+  margin-right: 0.45rem;
+}
+
+.hint,
+.drawn {
+  color: var(--muted);
+}
+
+.drawn {
+  margin-top: 0.6rem;
+  background: #12182b;
+  border-radius: 8px;
+  padding: 0.7rem;
+  min-height: 44px;
+}
+
+.players {
+  list-style: none;
+  padding: 0;
+  margin: 0.8rem 0 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.player {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #12182b;
+  border: 1px solid #2f395d;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+}
+
+.player-controls {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.player-controls button {
+  padding: 0.3rem 0.5rem;
+}
