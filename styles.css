@@ -219,3 +219,27 @@ button:disabled {
     justify-content: start;
   }
 }
+
+.blank-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 0.1rem 0.45rem;
+  margin: 0 0.12rem;
+  border: 1px dashed #d470ab;
+  border-radius: 8px;
+  background: #fff0f9;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.blank-slot.drag-over {
+  border-color: var(--accent);
+  background: #ffd9ee;
+}
+
+.choice-chip {
+  text-transform: lowercase;
+  border-style: dashed;
+}
