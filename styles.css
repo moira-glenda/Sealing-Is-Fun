@@ -92,6 +92,11 @@ button:focus-visible {
   outline: none;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .mode-btn.active {
   background: var(--accent);
   color: #fff;
@@ -164,6 +169,12 @@ button:focus-visible {
   font-size: 0.92rem;
 }
 
+.phrase-token {
+  border-radius: 12px;
+  text-align: left;
+  line-height: 1.35;
+}
+
 .bank .token {
   background: #ffe9f6;
 }
@@ -186,12 +197,6 @@ button:focus-visible {
 
 .card.dragging {
   opacity: 0.5;
-}
-
-.verse-num {
-  font-weight: 800;
-  color: var(--accent-dark);
-  margin-right: 0.45rem;
 }
 
 @media (min-width: 680px) {
