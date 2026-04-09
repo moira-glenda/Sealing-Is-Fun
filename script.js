@@ -350,7 +350,7 @@ function createBuilderRound() {
   builderState.selectedChunks = [];
   builderState.bankChunks = shuffleList(chunks.map((chunk, index) => ({ id: `chunk-${index}`, chunk })));
 
-  builderVerseRefEl.textContent = `Build Revelation 3:${verse.number} using phrase cards (~5 words each)`;
+  builderVerseRefEl.textContent = `Build Revelation 3:${verse.number} using phrase cards`;
   setFeedback(builderFeedbackEl, "");
   renderBuilderZones();
 }
