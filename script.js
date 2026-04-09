@@ -38,7 +38,7 @@ const verses = [
 ];
 
 const modeDescription = {
-  missing: "Fill in around five missing words per verse from Revelation 3:14–22.",
+  missing: "Drag 12 answer chips into 6 missing word slots for each verse in Revelation 3:14–22.",
   builder: "Rebuild a verse by arranging 5-word phrase cards in the correct order.",
   order: "Drag full verse cards into biblical order from 14 to 22."
 };
@@ -64,11 +64,12 @@ const nextMissingBtn = document.getElementById("nextMissingBtn");
 let missingState = {
   score: 0,
   verseIndex: 0,
-  blankIndex: 0,
   blankWordIndexes: [],
-  answer: "",
-  answered: false,
-  completed: false
+  correctAnswers: [],
+  assignments: [],
+  bankChoices: [],
+  completed: false,
+  solvedCurrentVerse: false
 };
 
 // Verse builder
@@ -114,7 +115,7 @@ function setFeedback(el, message, type = "") {
   }
 }
 
-function getMissingWordIndexesForVerse(verseText) {
+function getMissingWordIndexesForVerse(verseText, count = 6) {
   const words = verseText.split(/\s+/);
   const priorityIndexes = [];
 
@@ -124,14 +125,15 @@ function getMissingWordIndexesForVerse(verseText) {
     }
   });
 
+  const targetCount = Math.min(count, priorityIndexes.length);
   const chosen = [];
-  const step = Math.max(1, Math.floor(priorityIndexes.length / 5));
+  const step = Math.max(1, Math.floor(priorityIndexes.length / targetCount));
 
-  for (let i = 0; i < priorityIndexes.length && chosen.length < 5; i += step) {
+  for (let i = 0; i < priorityIndexes.length && chosen.length < targetCount; i += step) {
     chosen.push(priorityIndexes[i]);
   }
 
-  while (chosen.length < Math.min(5, priorityIndexes.length)) {
+  while (chosen.length < targetCount) {
     const randomIndex = randomItem(priorityIndexes);
     if (!chosen.includes(randomIndex)) {
       chosen.push(randomIndex);
@@ -141,10 +143,69 @@ function getMissingWordIndexesForVerse(verseText) {
   return chosen.sort((a, b) => a - b);
 }
 
+function getConfusingDistractors(answerSet) {
+  const allWords = verses
+    .flatMap((v) => v.text.split(/\s+/).map(sanitizeWord))
+    .filter((word) => word.length >= 4 && !answerSet.has(word));
+
+  const distractors = [];
+
+  missingState.correctAnswers.forEach((answer) => {
+    const candidates = allWords.filter((word) => {
+      const startsSame = word[0] === answer[0];
+      const closeLength = Math.abs(word.length - answer.length) <= 2;
+      return startsSame || closeLength;
+    });
+
+    const picked = candidates.find((word) => !distractors.includes(word));
+    if (picked) {
+      distractors.push(picked);
+    }
+  });
+
+  while (distractors.length < 6 && allWords.length) {
+    const candidate = randomItem(allWords);
+    if (!distractors.includes(candidate)) {
+      distractors.push(candidate);
+    }
+  }
+
+  return distractors.slice(0, 6);
+}
+
+function evaluateMissingVerse() {
+  const allFilled = missingState.assignments.every((word) => Boolean(word));
+
+  if (!allFilled) {
+    missingState.solvedCurrentVerse = false;
+    nextMissingBtn.disabled = true;
+    return;
+  }
+
+  const isCorrect = missingState.assignments.every((word, index) => {
+    return sanitizeWord(word) === missingState.correctAnswers[index];
+  });
+
+  if (isCorrect) {
+    if (!missingState.solvedCurrentVerse) {
+      missingState.score += missingState.correctAnswers.length;
+      missingScoreEl.textContent = String(missingState.score);
+    }
+
+    missingState.solvedCurrentVerse = true;
+    nextMissingBtn.disabled = false;
+    setFeedback(missingFeedbackEl, "Perfect! All 6 missing words are correct. Tap next verse.", "ok");
+  } else {
+    missingState.solvedCurrentVerse = false;
+    nextMissingBtn.disabled = true;
+    setFeedback(missingFeedbackEl, "Some words are misplaced. Drag words to new slots until all are correct.", "bad");
+  }
+}
+
 function renderCurrentMissingPrompt() {
   if (missingState.completed) {
     missingProgressEl.textContent = "Completed: Revelation 3:14–22";
-    missingPromptEl.innerHTML = "You finished all verses and missing words. Great work!";
+    missingPromptEl.innerHTML = "You finished all verses and drag-and-drop words. Great work!";
     missingChoicesEl.innerHTML = "";
     nextMissingBtn.disabled = true;
     return;
@@ -152,82 +213,110 @@ function renderCurrentMissingPrompt() {
 
   const verse = verses[missingState.verseIndex];
   const words = verse.text.split(/\s+/);
-  const blankWordIndex = missingState.blankWordIndexes[missingState.blankIndex];
-  const originalWord = words[blankWordIndex];
 
-  missingState.answer = sanitizeWord(originalWord);
-
-  words[blankWordIndex] = "____";
-  const displayText = words.join(" ");
-
-  const distractors = shuffleList(
-    verses
-      .flatMap((v) => v.text.split(/\s+/))
-      .filter((word) => {
-        const cleaned = sanitizeWord(word);
-        return cleaned.length >= 4 && cleaned !== missingState.answer;
-      })
-  )
-    .slice(0, 3)
-    .map(sanitizeWord);
-
-  const choices = shuffleList([missingState.answer, ...distractors]);
-
-  missingProgressEl.textContent = `Verse ${verse.number} • Missing word ${missingState.blankIndex + 1} of ${missingState.blankWordIndexes.length}`;
-  missingPromptEl.innerHTML = `<strong>Revelation 3:${verse.number}</strong> — ${displayText}`;
-
-  missingChoicesEl.innerHTML = "";
-  choices.forEach((choice) => {
-    const button = document.createElement("button");
-    button.textContent = choice;
-    button.disabled = missingState.answered;
-    button.addEventListener("click", () => handleMissingGuess(choice));
-    missingChoicesEl.appendChild(button);
+  missingState.blankWordIndexes.forEach((wordIndex, slotIndex) => {
+    const assigned = missingState.assignments[slotIndex];
+    const slotText = assigned || "drop";
+    words[wordIndex] = `<span class="blank-slot" data-slot-index="${slotIndex}">${slotText}</span>`;
   });
 
-  nextMissingBtn.disabled = !missingState.answered;
+  missingProgressEl.textContent = `Verse ${verse.number} • Place all 6 missing words`;
+  missingPromptEl.innerHTML = `<strong>Revelation 3:${verse.number}</strong> — ${words.join(" ")}`;
+
+  missingPromptEl.querySelectorAll(".blank-slot").forEach((slot) => {
+    slot.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      slot.classList.add("drag-over");
+    });
+
+    slot.addEventListener("dragleave", () => {
+      slot.classList.remove("drag-over");
+    });
+
+    slot.addEventListener("drop", (event) => {
+      event.preventDefault();
+      slot.classList.remove("drag-over");
+      const word = event.dataTransfer.getData("text/plain");
+      if (!word) return;
+
+      const slotIndex = Number(slot.dataset.slotIndex);
+      assignMissingWordToSlot(word, slotIndex);
+    });
+
+    slot.addEventListener("click", () => {
+      const slotIndex = Number(slot.dataset.slotIndex);
+      const assignedWord = missingState.assignments[slotIndex];
+      if (!assignedWord) return;
+      missingState.assignments[slotIndex] = "";
+      missingState.bankChoices.push(assignedWord);
+      renderCurrentMissingPrompt();
+      evaluateMissingVerse();
+    });
+  });
+
+  missingChoicesEl.innerHTML = "";
+  missingState.bankChoices.forEach((choice, index) => {
+    const token = document.createElement("button");
+    token.className = "choice-chip";
+    token.draggable = true;
+    token.textContent = choice;
+    token.dataset.choiceIndex = String(index);
+
+    token.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("text/plain", choice);
+    });
+
+    token.addEventListener("click", () => {
+      const firstEmptySlot = missingState.assignments.findIndex((word) => !word);
+      if (firstEmptySlot !== -1) {
+        assignMissingWordToSlot(choice, firstEmptySlot);
+      }
+    });
+
+    missingChoicesEl.appendChild(token);
+  });
+}
+
+function assignMissingWordToSlot(word, slotIndex) {
+  const bankIndex = missingState.bankChoices.indexOf(word);
+  if (bankIndex === -1) return;
+
+  const currentWordInSlot = missingState.assignments[slotIndex];
+  if (currentWordInSlot) {
+    missingState.bankChoices.push(currentWordInSlot);
+  }
+
+  missingState.assignments[slotIndex] = word;
+  missingState.bankChoices.splice(bankIndex, 1);
+
+  renderCurrentMissingPrompt();
+  evaluateMissingVerse();
 }
 
 function startMissingVerse(verseIndex) {
   missingState.verseIndex = verseIndex;
-  missingState.blankIndex = 0;
-  missingState.blankWordIndexes = getMissingWordIndexesForVerse(verses[verseIndex].text);
-  missingState.answered = false;
-  setFeedback(missingFeedbackEl, "");
+  missingState.blankWordIndexes = getMissingWordIndexesForVerse(verses[verseIndex].text, 6);
+
+  const words = verses[verseIndex].text.split(/\s+/);
+  missingState.correctAnswers = missingState.blankWordIndexes.map((wordIndex) => sanitizeWord(words[wordIndex]));
+  missingState.assignments = Array(missingState.blankWordIndexes.length).fill("");
+
+  const answerSet = new Set(missingState.correctAnswers);
+  const distractors = getConfusingDistractors(answerSet);
+  missingState.bankChoices = shuffleList([...missingState.correctAnswers, ...distractors]).slice(0, 12);
+
+  missingState.solvedCurrentVerse = false;
+  nextMissingBtn.disabled = true;
+  setFeedback(missingFeedbackEl, "Drag each answer chip into the right blank. Tap a filled blank to remove it.");
   renderCurrentMissingPrompt();
 }
 
-function handleMissingGuess(choice) {
-  if (missingState.answered || missingState.completed) {
-    return;
-  }
-
-  if (choice === missingState.answer) {
-    missingState.score += 1;
-    missingScoreEl.textContent = String(missingState.score);
-    missingState.answered = true;
-    nextMissingBtn.disabled = false;
-    setFeedback(missingFeedbackEl, "Correct! Tap next for the next missing word.", "ok");
-  } else {
-    setFeedback(missingFeedbackEl, `Not quite. Try again.`, "bad");
-  }
-}
-
 function moveToNextMissingWord() {
-  if (missingState.completed || !missingState.answered) {
+  if (missingState.completed || !missingState.solvedCurrentVerse) {
     return;
   }
 
-  const atEndOfVerse = missingState.blankIndex >= missingState.blankWordIndexes.length - 1;
   const atEndOfPassage = missingState.verseIndex >= verses.length - 1;
-
-  if (!atEndOfVerse) {
-    missingState.blankIndex += 1;
-    missingState.answered = false;
-    setFeedback(missingFeedbackEl, "");
-    renderCurrentMissingPrompt();
-    return;
-  }
 
   if (!atEndOfPassage) {
     startMissingVerse(missingState.verseIndex + 1);
