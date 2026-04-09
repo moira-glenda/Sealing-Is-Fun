@@ -38,9 +38,9 @@ const verses = [
 ];
 
 const modeDescription = {
-  missing: "Drag 12 answer chips into 6 missing word slots for each verse in Revelation 3:14–22.",
-  builder: "Rebuild a verse by arranging 5-word phrase cards in the correct order.",
-  order: "Drag full verse cards into biblical order from 14 to 22."
+  missing: "Drag answer chips into missing word slots for each verse.",
+  builder: "Rebuild a verse by arranging phrase cards in the correct order.",
+  order: "Drag full verse cards into biblical order."
 };
 
 let currentMode = "missing";
